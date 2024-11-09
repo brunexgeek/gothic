@@ -12,7 +12,7 @@
   'pull_request':
 
 'jobs':
-'test':
+  'test':
     'runs-on': '${{ matrix.os }}'
     'env':
       'GO111MODULE': 'on'
