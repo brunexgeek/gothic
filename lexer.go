@@ -7,10 +7,7 @@ import (
 type TokenType string
 
 const (
-	Keyword    TokenType = "KEYWORD"
-	Identifier TokenType = "IDENTIFIER"
-	Symbol     TokenType = "SYMBOL"
-	EOF        TokenType = "EOF"
+	T_EOF      TokenType = "EOF"
 	T_FUNC     TokenType = "FUNC"
 	T_STRUCT   TokenType = "STRUCT"
 	T_TYPE     TokenType = "TYPE"
@@ -41,6 +38,8 @@ const (
 	T_GE       TokenType = "GE"
 	T_PERCENT  TokenType = "PERCENT"
 	T_COMMENT  TokenType = "COMMENT"
+	T_NAME     TokenType = "NAME"
+	T_INTEGER  TokenType = "INTEGER"
 )
 
 type Token struct {
@@ -135,14 +134,14 @@ func (l *Lexer) NextToken() (Token, error) {
 	case '*':
 		tok = Token{Type: T_ASTERISK, Value: "*"}
 	case 0:
-		tok = Token{Type: EOF, Value: ""}
+		tok = Token{Type: T_EOF, Value: ""}
 	default:
 		if isLetter(l.ch) {
 			literal := l.readIdentifier()
 			return Token{Type: lookupIdent(literal), Value: literal}, nil
 		} else if isDigit(l.ch) {
 			literal := l.readNumber()
-			return Token{Type: Identifier, Value: literal}, nil
+			return Token{Type: T_INTEGER, Value: literal}, nil
 		} else {
 			return Token{Type: T_UNKNOWN, Value: ""}, fmt.Errorf("unknown token '%c'", l.ch)
 		}
@@ -218,5 +217,5 @@ func lookupIdent(ident string) TokenType {
 	if tok, ok := keywords[ident]; ok {
 		return tok
 	}
-	return Identifier
+	return T_NAME
 }

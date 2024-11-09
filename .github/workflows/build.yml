@@ -1,0 +1,36 @@
+'name': 'build'
+
+'env':
+  'GO_VERSION': '1.22.4'
+
+'on':
+  'push':
+    'branches':
+    - '*'
+    'tags':
+    - 'v*'
+  'pull_request':
+
+'jobs':
+'test':
+    'runs-on': '${{ matrix.os }}'
+    'env':
+      'GO111MODULE': 'on'
+      'GOPROXY': 'https://goproxy.cn'
+    'strategy':
+      'fail-fast': false
+      'matrix':
+        'os':
+        - 'ubuntu-latest'
+    'steps':
+    - 'name': 'Checkout'
+      'uses': 'actions/checkout@v2'
+      'with':
+        'fetch-depth': 0
+    - 'name': 'Set up Go tooling'
+      'uses': 'actions/setup-go@v3'
+      'with':
+        'go-version': '${{ env.GO_VERSION }}'
+    - 'name': 'Build project'
+      'shell': 'bash'
+      'run': './build.sh'
