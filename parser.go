@@ -6,22 +6,24 @@ import (
 
 type Module struct {
 	Package string
+	Imports *ImportStmt
 	Body    []interface{}
 }
 
-type ConstantDecl struct {
-	ParameterDecl
-	Values []string
-}
-
-type VariableDecl struct {
-	ParameterDecl
-	Values []string
+type ImportStmt struct {
+	Names []string
 }
 
 type ParameterDecl struct {
 	Names []string
 	Type  string
+}
+
+type VariableDecl struct {
+	Names   []string
+	Type    string
+	Values  []string
+	IsConst bool
 }
 
 type Function struct {
@@ -53,6 +55,8 @@ const (
 	O_LE
 	O_GE
 )
+
+const LOOKAHEAD_SIZE = 5
 
 type UnaryExpr struct {
 	Right    interface{}
@@ -101,10 +105,11 @@ type ForRangeStmt struct {
 }
 
 type Parser struct {
-	lexer  *Lexer
-	token  Token
-	errors []string
-	module *Module
+	lexer *Lexer
+	//token     Token
+	errors    []string
+	module    *Module
+	lookahead []Token
 }
 
 func NewParser(l *Lexer) *Parser {
@@ -113,27 +118,78 @@ func NewParser(l *Lexer) *Parser {
 	return p
 }
 
-func (p *Parser) nextToken() {
-	p.token, _ = p.lexer.NextToken()
-	fmt.Printf("-- %s\n", p.token)
+func (p *Parser) peek() Token {
+	if len(p.lookahead) == 0 {
+		var zero Token
+		return zero
+	}
+	return p.lookahead[0]
+}
+
+func (p *Parser) peekType() TokenType {
+	if len(p.lookahead) == 0 {
+		return T_EOF
+	}
+	return p.lookahead[0].Type
+}
+
+func (p *Parser) nextToken() bool {
+	var ok = true
+	if len(p.lookahead) == 0 {
+		ok = p.refill(1)
+	} else if len(p.lookahead) == 1 {
+		ok = p.refill(2)
+		if ok {
+			p.lookahead = p.lookahead[1:]
+		}
+	} else {
+		p.lookahead = p.lookahead[1:]
+	}
+	return ok
+}
+
+// Refill the lookahead buffer so it contains at least 'c' tokens
+func (p *Parser) refill(c int) bool {
+	count := min(LOOKAHEAD_SIZE, c) - len(p.lookahead)
+	for i := 0; i < count; i++ {
+		token, err := p.lexer.NextToken()
+		fmt.Printf("-- %s\n", TOKEN_NAMES[token.Type])
+		if err != nil {
+			return false
+		}
+		p.lookahead = append(p.lookahead, token)
+	}
+	return true
 }
 
 func (p *Parser) expected(tokens ...TokenType) bool {
-	for _, t := range tokens {
-		if p.token.Type == t {
-			p.nextToken()
-			return true
+	if len(tokens)+1 > LOOKAHEAD_SIZE {
+		return false
+	}
+	// get enough tokens to satisfy the lookahead length
+	if len(p.lookahead) < len(tokens)+1 {
+		p.refill(len(tokens) + 1)
+	}
+
+	for i, t := range tokens {
+		if p.lookahead[i].Type != t {
+			return false
 		}
 	}
-	return false
+	p.lookahead = p.lookahead[len(tokens):]
+	return true
 }
 
-func (p *Parser) expectPeek(t TokenType) bool {
-	if p.token.Type == t {
+func (p *Parser) required(t TokenType) bool {
+	if len(p.lookahead) == 0 {
+		p.refill(1)
+	}
+
+	if p.lookahead[0].Type == t {
 		p.nextToken()
 		return true
 	} else {
-		err := fmt.Sprintf("expected next token to be %s, got %s instead", t, p.token.Type)
+		err := fmt.Sprintf("expected next token to be %s, got %s instead", TOKEN_NAMES[t], TOKEN_NAMES[p.lookahead[0].Type])
 		p.errors = append(p.errors, err)
 		fmt.Println(err)
 		return false
@@ -141,23 +197,79 @@ func (p *Parser) expectPeek(t TokenType) bool {
 }
 
 func (p *Parser) Parse() *Module {
-	for p.token.Type != T_EOF {
-		switch p.token.Type {
+loop:
+	for {
+		ttype := p.peekType()
+		switch ttype {
+		case T_PACKAGE:
+			p.module.Package = p.parsePackage()
+		case T_IMPORT:
+			p.module.Imports = p.parseImport()
+		case T_VAR:
+			p.module.Body = append(p.module.Body, p.parseVarDeclaration())
 		case T_FOR:
 			p.module.Body = append(p.module.Body, p.parseFor())
 		case T_IF:
 			p.module.Body = append(p.module.Body, p.parseIf())
 		case T_FUNC:
 			p.module.Body = append(p.module.Body, p.parseFunction())
+		case T_COMMENT:
+			p.nextToken()
+			// ignore comments
+		case T_EOF:
+			break loop
 		default:
-			p.errors = append(p.errors, fmt.Sprintf("unrecognized token '%s'", p.token))
+			p.parseVarDeclaration()
+			p.errors = append(p.errors, fmt.Sprintf("unrecognized token '%s'", TOKEN_NAMES[ttype]))
 			return nil
 		}
 	}
 	return p.module
 }
 
-func (p *Parser) parseVarDeclaration() *VariableDecl {
+func (p *Parser) parseImport() *ImportStmt {
+	result := &ImportStmt{}
+	if p.expected(T_IMPORT) {
+		// have we got multiple imports?
+		if p.expected(T_LPAREN) {
+			for p.peekType() == T_STRING {
+				result.Names = append(result.Names, p.peek().Value)
+				p.nextToken()
+			}
+			if !p.expected(T_RPAREN) {
+				p.errors = append(p.errors, fmt.Sprintf("expected ')' but found '%s'", TOKEN_NAMES[p.peekType()]))
+				return nil
+			}
+			return result
+		}
+
+		// single import
+		if p.peekType() == T_STRING {
+			result.Names = append(result.Names, p.peek().Value)
+			p.nextToken()
+			return result
+		}
+
+		p.errors = append(p.errors, fmt.Sprintf("expected ')' but found '%s'", TOKEN_NAMES[p.peekType()]))
+		return nil
+	}
+	return nil
+}
+
+func (p *Parser) parsePackage() string {
+	if p.expected(T_PACKAGE) && p.peekType() == T_NAME {
+		literal := p.peek().Value
+		p.nextToken()
+		return literal
+	}
+	return ""
+}
+
+func (p *Parser) parseParameterDecl() interface{} {
+	return &ParameterDecl{}
+}
+
+func (p *Parser) parseVarDeclaration() interface{} {
 	return nil
 }
 
@@ -170,22 +282,7 @@ func (p *Parser) parseStruct() *Struct {
 }
 
 func (p *Parser) parseIf() *IfStmt {
-	p.nextToken() // Skip 'if'
-	if !p.expectPeek(T_LPAREN) {
-		return nil
-	}
-	condition := p.parseExpression()
-	if !p.expectPeek(T_RPAREN) {
-		return nil
-	}
-	if !p.expectPeek(T_LBRACE) {
-		return nil
-	}
-	body := p.parseBlock()
-	if !p.expectPeek(T_RBRACE) {
-		return nil
-	}
-	return &IfStmt{Condition: condition, Body: body}
+	return nil
 }
 
 func (p *Parser) parseExpression() interface{} {
@@ -195,7 +292,7 @@ func (p *Parser) parseExpression() interface{} {
 // ParseUnary = unary_op UnaryExpr | PrimaryExpr .
 func (p *Parser) parseUnaryExpr() interface{} {
 	// has a 'unary_op'?
-	operator := p.token.Type
+	operator := p.peekType()
 	if !p.expected(T_PLUS, T_MINUS) {
 		return p.parsePrimaryExpr()
 	}
@@ -225,13 +322,14 @@ func (p *Parser) parsePrimaryExpr() interface{} {
 
 // Operand = Literal | OperandName .
 func (p *Parser) parseOperand() interface{} {
-	switch p.token.Type {
+	token := p.peek()
+	switch token.Type {
 	case T_NAME:
-		return &NameLit{Literal{Value: p.token.Value}}
+		return &NameLit{Literal{Value: token.Value}}
 	case T_STRING:
-		return &StringLit{Literal{Value: p.token.Value}}
+		return &StringLit{Literal{Value: token.Value}}
 	case T_INTEGER:
-		return &StringLit{Literal{Value: p.token.Value}}
+		return &StringLit{Literal{Value: token.Value}}
 	default:
 		return nil
 	}

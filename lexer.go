@@ -4,43 +4,85 @@ import (
 	"fmt"
 )
 
-type TokenType string
+type TokenType int
 
 const (
-	T_EOF      TokenType = "EOF"
-	T_FUNC     TokenType = "FUNC"
-	T_STRUCT   TokenType = "STRUCT"
-	T_TYPE     TokenType = "TYPE"
-	T_LPAREN   TokenType = "LPAREN"
-	T_RPAREN   TokenType = "RPAREN"
-	T_LBRACE   TokenType = "LBRACE"
-	T_RBRACE   TokenType = "RBRACE"
-	T_LBRACKET TokenType = "LBRACKET"
-	T_RBRACKET TokenType = "RBRACKET"
-	T_ASSIGN   TokenType = "ASSIGN"
-	T_IF       TokenType = "IF"
-	T_ELSE     TokenType = "ELSE"
-	T_VAR      TokenType = "VAR"
-	T_FOR      TokenType = "FOR"
-	T_STRING   TokenType = "STRING"
-	T_UNKNOWN  TokenType = "UNKNOWN"
-	T_SLASH    TokenType = "SLASH"
-	T_COMMA    TokenType = "COMMA"
-	T_DOT      TokenType = "DOT"
-	T_COLON    TokenType = "COLON"
-	T_SCOLON   TokenType = "SCOLON"
-	T_ASTERISK TokenType = "ASTERISK"
-	T_PLUS     TokenType = "PLUS"
-	T_MINUS    TokenType = "MINUS"
-	T_LT       TokenType = "LT"
-	T_GT       TokenType = "GT"
-	T_LE       TokenType = "LE"
-	T_GE       TokenType = "GE"
-	T_PERCENT  TokenType = "PERCENT"
-	T_COMMENT  TokenType = "COMMENT"
-	T_NAME     TokenType = "NAME"
-	T_INTEGER  TokenType = "INTEGER"
+	T_EOF TokenType = iota
+	T_FUNC
+	T_STRUCT
+	T_TYPE
+	T_LPAREN
+	T_RPAREN
+	T_LBRACE
+	T_RBRACE
+	T_LBRACKET
+	T_RBRACKET
+	T_ASSIGN
+	T_IF
+	T_ELSE
+	T_VAR
+	T_FOR
+	T_STRING
+	T_UNKNOWN
+	T_SLASH
+	T_COMMA
+	T_DOT
+	T_COLON
+	T_SCOLON
+	T_ASTERISK
+	T_PLUS
+	T_MINUS
+	T_LT
+	T_GT
+	T_LE
+	T_GE
+	T_PERCENT
+	T_COMMENT
+	T_NAME
+	T_INTEGER
+	T_PACKAGE
+	T_IMPORT
+	T_CONST
 )
+
+var TOKEN_NAMES = []string{
+	"EOF",
+	"FUNC",
+	"STRUCT",
+	"TYPE",
+	"LPAREN",
+	"RPAREN",
+	"LBRACE",
+	"RBRACE",
+	"LBRACKET",
+	"RBRACKET",
+	"ASSIGN",
+	"IF",
+	"ELSE",
+	"VAR",
+	"FOR",
+	"STRING",
+	"UNKNOWN",
+	"SLASH",
+	"COMMA",
+	"DOT",
+	"COLON",
+	"SCOLON",
+	"ASTERISK",
+	"PLUS",
+	"MINUS",
+	"LT",
+	"GT",
+	"LE",
+	"GE",
+	"PERCENT",
+	"COMMENT",
+	"NAME",
+	"INTEGER",
+	"PACKAGE",
+	"IMPORT",
+	"CONST",
+}
 
 type Token struct {
 	Type  TokenType
@@ -71,6 +113,7 @@ func (l *Lexer) readChar() {
 }
 
 func (l *Lexer) NextToken() (Token, error) {
+
 	l.skipWhitespace()
 
 	var tok Token
@@ -206,13 +249,15 @@ func isDigit(ch byte) bool {
 
 func lookupIdent(ident string) TokenType {
 	keywords := map[string]TokenType{
-		"var":    T_VAR,
-		"func":   T_FUNC,
-		"struct": T_STRUCT,
-		"type":   T_TYPE,
-		"if":     T_IF,
-		"else":   T_ELSE,
-		"for":    T_FOR,
+		"var":     T_VAR,
+		"func":    T_FUNC,
+		"struct":  T_STRUCT,
+		"type":    T_TYPE,
+		"if":      T_IF,
+		"else":    T_ELSE,
+		"for":     T_FOR,
+		"package": T_PACKAGE,
+		"import":  T_IMPORT,
 	}
 	if tok, ok := keywords[ident]; ok {
 		return tok
