@@ -1,7 +1,9 @@
 package main
 
 import (
+	"bufio"
 	"fmt"
+	"strings"
 )
 
 type TokenType int
@@ -90,26 +92,27 @@ type Token struct {
 }
 
 type Lexer struct {
-	input        string
-	position     int
-	readPosition int
-	ch           byte
+	input   *bufio.Reader
+	current rune
+	eof     bool
 }
 
-func NewLexer(input string) *Lexer {
+func NewLexer(input *bufio.Reader) *Lexer {
 	l := &Lexer{input: input}
-	l.readChar()
+	l.readRune()
 	return l
 }
 
-func (l *Lexer) readChar() {
-	if l.readPosition >= len(l.input) {
-		l.ch = 0
-	} else {
-		l.ch = l.input[l.readPosition]
+func (l *Lexer) readRune() {
+	l.current = 0
+	if l.eof {
+		return
 	}
-	l.position = l.readPosition
-	l.readPosition++
+	value, _, err := l.input.ReadRune()
+	if err != nil {
+		return
+	}
+	l.current = value
 }
 
 func (l *Lexer) NextToken() (Token, error) {
@@ -117,7 +120,7 @@ func (l *Lexer) NextToken() (Token, error) {
 	l.skipWhitespace()
 
 	var tok Token
-	switch l.ch {
+	switch l.current {
 	case '=':
 		tok = Token{Type: T_ASSIGN, Value: "="}
 	case '{':
@@ -135,22 +138,22 @@ func (l *Lexer) NextToken() (Token, error) {
 	case '%':
 		tok = Token{Type: T_PERCENT, Value: "]"}
 	case '<':
-		l.readChar()
-		if l.ch == '=' {
+		l.readRune()
+		if l.current == '=' {
 			return Token{Type: T_LE, Value: "<"}, nil
 		} else {
 			return Token{Type: T_LT, Value: "<="}, nil
 		}
 	case '>':
-		l.readChar()
-		if l.ch == '=' {
+		l.readRune()
+		if l.current == '=' {
 			return Token{Type: T_GE, Value: ">"}, nil
 		} else {
 			return Token{Type: T_GT, Value: ">="}, nil
 		}
 	case '/':
-		l.readChar()
-		if l.ch == '/' {
+		l.readRune()
+		if l.current == '/' {
 			literal := l.readLineComment()
 			return Token{Type: T_COMMENT, Value: literal}, nil
 		} else {
@@ -179,71 +182,74 @@ func (l *Lexer) NextToken() (Token, error) {
 	case 0:
 		tok = Token{Type: T_EOF, Value: ""}
 	default:
-		if isLetter(l.ch) {
+		if isLetter(l.current) {
 			literal := l.readIdentifier()
 			return Token{Type: lookupIdent(literal), Value: literal}, nil
-		} else if isDigit(l.ch) {
+		} else if isDigit(l.current) {
 			literal := l.readNumber()
 			return Token{Type: T_INTEGER, Value: literal}, nil
 		} else {
-			return Token{Type: T_UNKNOWN, Value: ""}, fmt.Errorf("unknown token '%c'", l.ch)
+			return Token{Type: T_UNKNOWN, Value: ""}, fmt.Errorf("unknown token '%c'", l.current)
 		}
 	}
 
-	l.readChar()
+	l.readRune()
 	return tok, nil
 }
 
 func (l *Lexer) skipWhitespace() {
-	for l.ch == ' ' || l.ch == '\t' || l.ch == '\n' || l.ch == '\r' {
-		l.readChar()
+	for l.current == ' ' || l.current == '\t' || l.current == '\n' || l.current == '\r' {
+		l.readRune()
 	}
 }
 
 func (l *Lexer) readString() (string, error) {
-	l.readChar() // skip quotes
-	start := l.position
-	for l.ch != '"' && l.ch != 0 {
-		l.readChar()
+	l.readRune() // skip quotes
+	var builder strings.Builder
+	for l.current != '"' && l.current != 0 {
+		builder.WriteRune(l.current)
+		l.readRune()
 	}
-	if l.ch == 0 {
+	if l.current == 0 {
 		return "", fmt.Errorf("unterminated string")
 	}
-	end := l.position
-	l.readChar()
-	return l.input[start:end], nil
+	l.readRune()
+	return builder.String(), nil
 }
 
 func (l *Lexer) readLineComment() string {
-	l.readChar() // skip '/'
-	start := l.position
-	for l.ch != '\n' && l.ch != 0 {
-		l.readChar()
+	l.readRune() // skip '/'
+	var builder strings.Builder
+	for l.current != '\n' && l.current != 0 {
+		builder.WriteRune(l.current)
+		l.readRune()
 	}
-	return l.input[start:l.position]
+	return builder.String()
 }
 
 func (l *Lexer) readIdentifier() string {
-	start := l.position
-	for isLetter(l.ch) {
-		l.readChar()
+	var builder strings.Builder
+	for isLetter(l.current) {
+		builder.WriteRune(l.current)
+		l.readRune()
 	}
-	return l.input[start:l.position]
+	return builder.String()
 }
 
 func (l *Lexer) readNumber() string {
-	start := l.position
-	for isDigit(l.ch) {
-		l.readChar()
+	var builder strings.Builder
+	for isDigit(l.current) {
+		builder.WriteRune(l.current)
+		l.readRune()
 	}
-	return l.input[start:l.position]
+	return builder.String()
 }
 
-func isLetter(ch byte) bool {
+func isLetter(ch rune) bool {
 	return 'a' <= ch && ch <= 'z' || 'A' <= ch && ch <= 'Z' || ch == '_'
 }
 
-func isDigit(ch byte) bool {
+func isDigit(ch rune) bool {
 	return '0' <= ch && ch <= '9'
 }
 

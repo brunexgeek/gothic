@@ -205,6 +205,7 @@ loop:
 			p.module.Package = p.parsePackage()
 		case T_IMPORT:
 			p.module.Imports = p.parseImport()
+		case T_CONST:
 		case T_VAR:
 			p.module.Body = append(p.module.Body, p.parseVarDeclaration())
 		case T_FOR:

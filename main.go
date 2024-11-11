@@ -1,9 +1,9 @@
 package main
 
 import (
+	"bufio"
 	"encoding/json"
 	"fmt"
-	"io"
 	"os"
 )
 
@@ -13,13 +13,10 @@ func main() {
 		fmt.Println(err)
 		return
 	}
-	input, err := io.ReadAll(file)
-	if err != nil {
-		fmt.Println(err)
-		return
-	}
+	defer file.Close()
 
-	lexer := NewLexer(string(input))
+	input := bufio.NewReader(file)
+	lexer := NewLexer(input)
 	/*for {
 		token, err := lexer.NextToken()
 		fmt.Println(token)
