@@ -2,7 +2,6 @@ package main
 
 import (
 	"bufio"
-	"encoding/json"
 	"fmt"
 	"os"
 )
@@ -39,7 +38,6 @@ func main() {
 		}
 	} else {
 		fmt.Println("Parsing completed successfully")
-		fmt.Print(json.MarshalIndent(result, "", "  "))
 	}
 
 }

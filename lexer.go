@@ -41,10 +41,11 @@ const (
 	T_PERCENT
 	T_COMMENT
 	T_NAME
-	T_INTEGER
+	T_NUMBER
 	T_PACKAGE
 	T_IMPORT
 	T_CONST
+	T_DEFINE
 )
 
 var TOKEN_NAMES = []string{
@@ -80,10 +81,11 @@ var TOKEN_NAMES = []string{
 	"PERCENT",
 	"COMMENT",
 	"NAME",
-	"INTEGER",
+	"NUMBER",
 	"PACKAGE",
 	"IMPORT",
 	"CONST",
+	"DEFINE",
 }
 
 type Token struct {
@@ -172,9 +174,19 @@ func (l *Lexer) NextToken() (Token, error) {
 	case ',':
 		tok = Token{Type: T_COMMA, Value: ","}
 	case '.':
-		tok = Token{Type: T_DOT, Value: "."}
+		l.readRune()
+		if isDigit(l.current) {
+			literal := l.readNumber(".")
+			return Token{Type: T_NUMBER, Value: literal}, nil
+		}
+		return Token{Type: T_DOT, Value: "."}, nil
 	case ':':
-		tok = Token{Type: T_COLON, Value: ":"}
+		l.readRune()
+		if l.current == '=' {
+			tok = Token{Type: T_DEFINE, Value: ":="}
+		} else {
+			tok = Token{Type: T_COLON, Value: ":"}
+		}
 	case ';':
 		tok = Token{Type: T_SCOLON, Value: ";"}
 	case '*':
@@ -186,8 +198,8 @@ func (l *Lexer) NextToken() (Token, error) {
 			literal := l.readIdentifier()
 			return Token{Type: lookupIdent(literal), Value: literal}, nil
 		} else if isDigit(l.current) {
-			literal := l.readNumber()
-			return Token{Type: T_INTEGER, Value: literal}, nil
+			literal := l.readNumber("")
+			return Token{Type: T_NUMBER, Value: literal}, nil
 		} else {
 			return Token{Type: T_UNKNOWN, Value: ""}, fmt.Errorf("unknown token '%c'", l.current)
 		}
@@ -236,9 +248,10 @@ func (l *Lexer) readIdentifier() string {
 	return builder.String()
 }
 
-func (l *Lexer) readNumber() string {
+func (l *Lexer) readNumber(prefix string) string {
 	var builder strings.Builder
-	for isDigit(l.current) {
+	builder.WriteString(prefix)
+	for isDigit(l.current) || l.current == '.' || l.current == 'e' || l.current == 'E' {
 		builder.WriteRune(l.current)
 		l.readRune()
 	}

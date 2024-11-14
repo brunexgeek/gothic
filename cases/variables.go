@@ -69,8 +69,8 @@ func main() {
 	fmt.Println(*m) // Outputs: 0
 
 	// Declaration with the make function
-	n := make([]int, 10)
-	o := make(map[string]int)
-	p := make(chan int)
-	fmt.Println(n, o, p)
+	//n := make([]int, 10)
+	//o := make(map[string]int)
+	//p := make(chan int)
+	//fmt.Println(n, o, p)
 }

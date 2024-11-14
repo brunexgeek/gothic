@@ -33,8 +33,9 @@ type VariableDecl struct {
 
 type Function struct {
 	Name       string
-	Parameters []*ParameterDecl
+	Parameters []interface{}
 	Body       []interface{}
+	Return     interface{}
 }
 
 type Struct struct {
@@ -49,19 +50,29 @@ type Operator int
 
 const (
 	O_NONE Operator = iota
-	O_ADD
-	O_SUB
-	O_MUL
-	O_DIV
-	O_EQ
-	O_NE
-	O_LT
-	O_GT
-	O_LE
-	O_GE
+	O_ADD           // +
+	O_SUB           // -
+	O_MUL           // *
+	O_DIV           // /
+	O_EQ            // ==
+	O_NE            // !=
+	O_LT            // <
+	O_GT            // >
+	O_LE            // <=
+	O_GE            // >=
+	O_AS            // =
+	O_DREF          // *
 )
 
 const LOOKAHEAD_SIZE = 5
+
+type ReturnDecl struct {
+	IsPointer bool
+}
+
+type QualifiedName struct {
+	Names []interface{}
+}
 
 type UnaryExpr struct {
 	Right    interface{}
@@ -74,22 +85,30 @@ type BinaryExpr struct {
 	Operator Operator
 }
 
+type AssignStmt struct {
+	BinaryExpr
+}
+
 type Literal struct {
 	Value string
 }
 
 type NameLit struct {
-	Literal
+	Value *QualifiedName
 }
 
 type StringLit struct {
 	Literal
 }
 
-type IntegerLit struct {
+type NumberLit struct {
 	Literal
 }
 
+type CallExpr struct {
+	Callee  interface{}
+	ArgList []interface{}
+}
 type IfStmt struct {
 	Condition interface{}
 	Body      []interface{}
@@ -172,6 +191,15 @@ func (p *Parser) refill(c int) bool {
 	return true
 }
 
+func (p *Parser) expectedOneOf(tokens ...TokenType) bool {
+	for _, t := range tokens {
+		if p.expected(t) {
+			return true
+		}
+	}
+	return false
+}
+
 func (p *Parser) expected(tokens ...TokenType) bool {
 	if len(tokens)+1 > LOOKAHEAD_SIZE {
 		return false
@@ -190,19 +218,20 @@ func (p *Parser) expected(tokens ...TokenType) bool {
 	return true
 }
 
-func (p *Parser) required(t TokenType) bool {
+func (p *Parser) required(t TokenType) (bool, Token) {
 	if len(p.lookahead) == 0 {
 		p.refill(1)
 	}
 
 	if p.lookahead[0].Type == t {
+		token := p.lookahead[0]
 		p.nextToken()
-		return true
+		return true, token
 	} else {
 		err := fmt.Sprintf("expected next token to be %s, got %s instead", TOKEN_NAMES[t], TOKEN_NAMES[p.lookahead[0].Type])
 		p.errors = append(p.errors, err)
 		fmt.Println(err)
-		return false
+		return false, Token{}
 	}
 }
 
@@ -309,7 +338,7 @@ func (p *Parser) parseVarDeclaration() interface{} {
 			}
 			result.Variables = append(result.Variables, stmt)
 		}
-		if !p.required(T_RPAREN) {
+		if ok, _ := p.required(T_RPAREN); !ok {
 			return nil
 		}
 		return result
@@ -328,7 +357,7 @@ func (p *Parser) parseSingleVariable() *VariableDecl {
 	// variable names
 	for {
 		literal := p.peek().Value
-		if !p.required(T_NAME) {
+		if ok, _ := p.required(T_NAME); !ok {
 			return nil
 		}
 		result.Names = append(result.Names, literal)
@@ -339,7 +368,7 @@ func (p *Parser) parseSingleVariable() *VariableDecl {
 	// variable type
 	if p.peekType() != T_ASSIGN {
 		result.Type = p.peek().Value
-		if !p.required(T_NAME) {
+		if ok, _ := p.required(T_NAME); !ok {
 			return nil
 		}
 	}
@@ -360,8 +389,46 @@ func (p *Parser) parseSingleVariable() *VariableDecl {
 }
 
 func (p *Parser) parseFunction() *Function {
-	p.errors = append(p.errors, "function parsing not implemented")
-	return nil
+	function := &Function{}
+	p.nextToken() // skip 'func' keyword
+
+	// function name
+	if ok, token := p.required(T_NAME); ok {
+		function.Name = token.Value
+	} else {
+		p.errors = append(p.errors, fmt.Sprintf("expected name of function but found '%s'", TOKEN_NAMES[p.peekType()]))
+		return nil
+	}
+	// function parameters
+	if ok, _ := p.required(T_LPAREN); !ok {
+		return nil
+	}
+	for p.peekType() != T_RPAREN {
+		function.Parameters = append(function.Parameters, p.parseParameterDecl())
+		if !p.expected(T_COMMA) {
+			break
+		}
+	}
+	if ok, _ := p.required(T_RPAREN); !ok {
+		return nil
+	}
+	// optional return type
+	if p.peekType() != T_LBRACE {
+		function.Return = p.parseType()
+	}
+	// function body
+	function.Body = p.parseBlock()
+
+	return function
+}
+
+func (p *Parser) parseType() *Struct {
+	result := &ReturnDecl{}
+	if p.peekType() == T_ASTERISK {
+		p.nextToken()
+		return p.parseType()
+	}
+	return p.parseStruct()
 }
 
 func (p *Parser) parseStruct() *Struct {
@@ -382,7 +449,7 @@ func (p *Parser) parseExpression() interface{} {
 func (p *Parser) parseUnaryExpr() interface{} {
 	// has a 'unary_op'?
 	operator := p.peekType()
-	if !p.expected(T_PLUS, T_MINUS) {
+	if !p.expectedOneOf(T_PLUS, T_MINUS, T_ASTERISK) {
 		return p.parsePrimaryExpr()
 	}
 
@@ -399,6 +466,8 @@ func deduceOperator(token TokenType) Operator {
 		return O_ADD
 	case T_MINUS:
 		return O_SUB
+	case T_ASTERISK:
+		return O_DREF
 	default:
 		return O_NONE
 	}
@@ -414,14 +483,17 @@ func (p *Parser) parseOperand() interface{} {
 	token := p.peek()
 	switch token.Type {
 	case T_NAME:
-		p.nextToken()
-		return &NameLit{Literal{Value: token.Value}}
+		name := p.parseQualifiedName()
+		if p.peekType() == T_LPAREN {
+			return p.parseCallExpr(name)
+		}
+		return &NameLit{Value: name}
 	case T_STRING:
 		p.nextToken()
 		return &StringLit{Literal{Value: token.Value}}
-	case T_INTEGER:
+	case T_NUMBER:
 		p.nextToken()
-		return &StringLit{Literal{Value: token.Value}}
+		return &NumberLit{Literal{Value: token.Value}}
 	default:
 		return nil
 	}
@@ -432,7 +504,132 @@ func (p *Parser) parseBinaryExpr() interface{} {
 }
 
 func (p *Parser) parseBlock() []interface{} {
+	body := []interface{}{}
+	if ok, _ := p.required(T_LBRACE); !ok {
+		return nil
+	}
+loop:
+	for {
+		ttype := p.peekType()
+
+		switch ttype {
+		case T_FOR:
+			stmt := p.parseFor()
+			if stmt == nil {
+				break loop
+			}
+			body = append(body, stmt)
+		case T_RBRACE:
+			p.nextToken()
+			break loop
+		case T_VAR:
+			fallthrough
+		case T_CONST:
+			stmt := p.parseVarDeclaration()
+			if stmt == nil {
+				break loop
+			}
+			body = append(body, stmt)
+		//case T_RETURN:
+		//	stmt := p.parseReturn()
+		//	if stmt == nil {
+		//		break loop
+		//	}
+		//	body = append(body, stmt)
+		case T_IF:
+			stmt := p.parseIf()
+			if stmt == nil {
+				break loop
+			}
+			body = append(body, stmt)
+		case T_NAME:
+			body = append(body, p.parseNameStatement())
+		default:
+			p.errors = append(p.errors, fmt.Sprintf("unexpected token %s", TOKEN_NAMES[ttype]))
+			return nil
+		}
+	}
+	return body
+}
+
+func (p *Parser) parseAssignement(name *QualifiedName) interface{} {
+	result := &AssignStmt{}
+	result.Left = name
+	result.Operator = deduceOperator(p.peekType())
+	if !p.expectedOneOf(T_ASSIGN, T_DEFINE) {
+		p.errors = append(p.errors, fmt.Sprintf("expected assignment operator but found '%s'", TOKEN_NAMES[p.peekType()]))
+		return nil
+	}
+	result.Right = p.parseExpression()
+	if result.Right == nil {
+		return nil
+	}
+	return result
+}
+
+func (p *Parser) ahead(index int) Token {
+	if index < 0 || index >= LOOKAHEAD_SIZE {
+		return Token{Type: T_EOF}
+	}
+	if index+1 > len(p.lookahead) {
+		p.refill(index + 1)
+	}
+	return p.lookahead[index]
+}
+
+func (p *Parser) parseNameStatement() interface{} {
+	name := p.parseQualifiedName()
+	// is it a function call?
+	if p.peekType() == T_LPAREN {
+		return p.parseCallExpr(name)
+	}
+	if p.peekType() == T_ASSIGN || p.peekType() == T_DEFINE {
+		return p.parseAssignement(name)
+	}
+
+	// is it a return statement?
+	//if tahead.Type == T_RETURN {
+	//	return p.parseReturn()
+	//}
+	p.errors = append(p.errors, fmt.Sprintf("unexpected token %s", TOKEN_NAMES[p.peekType()]))
 	return nil
+}
+
+func (p *Parser) parseQualifiedName() *QualifiedName {
+	if p.peekType() != T_NAME {
+		p.errors = append(p.errors, fmt.Sprintf("expected name but found '%s'", TOKEN_NAMES[p.peekType()]))
+		return nil
+	}
+	qname := &QualifiedName{}
+	for p.peekType() == T_NAME {
+		qname.Names = append(qname.Names, p.peek().Value)
+		p.nextToken()
+		if !p.expected(T_DOT) {
+			break
+		}
+	}
+	return qname
+}
+
+func (p *Parser) parseCallExpr(name *QualifiedName) interface{} {
+	result := &CallExpr{}
+	result.Callee = name
+	if result.Callee == nil {
+		return nil
+	}
+	if ok, _ := p.required(T_LPAREN); !ok {
+		return nil
+	}
+	for p.peekType() != T_RPAREN {
+		result.ArgList = append(result.ArgList, p.parseExpression())
+		if !p.expected(T_COMMA) {
+			break
+		}
+	}
+	if ok, _ := p.required(T_RPAREN); !ok {
+		return nil
+	}
+	return result
 }
 
 func (p *Parser) parseFor() interface{} {
