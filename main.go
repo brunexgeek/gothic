@@ -30,10 +30,12 @@ func main() {
 	}*/
 	parser := NewParser(lexer)
 	result := parser.Parse()
-	if len(parser.errors) > 0 {
-		fmt.Println("Errors encountered during parsing:")
-		for _, err := range parser.errors {
-			fmt.Println(err)
+	if result == nil || len(parser.errors) > 0 {
+		fmt.Println("Errors encountered during parsing!")
+		if len(parser.errors) > 0 {
+			for _, err := range parser.errors {
+				fmt.Printf("  %v\n", err)
+			}
 		}
 	} else {
 		fmt.Println("Parsing completed successfully")

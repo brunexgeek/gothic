@@ -19,10 +19,15 @@ type ParameterDecl struct {
 	Type  string
 }
 
+type VariableGroup struct {
+	Variables []*VariableDecl
+	IsConst   bool
+}
+
 type VariableDecl struct {
 	Names   []string
 	Type    string
-	Values  []string
+	Values  []interface{}
 	IsConst bool
 }
 
@@ -151,13 +156,18 @@ func (p *Parser) nextToken() bool {
 // Refill the lookahead buffer so it contains at least 'c' tokens
 func (p *Parser) refill(c int) bool {
 	count := min(LOOKAHEAD_SIZE, c) - len(p.lookahead)
-	for i := 0; i < count; i++ {
+	for i := 0; i < count; {
 		token, err := p.lexer.NextToken()
-		fmt.Printf("-- %s\n", TOKEN_NAMES[token.Type])
 		if err != nil {
 			return false
 		}
+		// ignoring comments
+		if token.Type == T_COMMENT {
+			continue
+		}
+		fmt.Printf("-- %s [%s]\n", TOKEN_NAMES[token.Type], token.Value)
 		p.lookahead = append(p.lookahead, token)
+		i++
 	}
 	return true
 }
@@ -206,21 +216,37 @@ loop:
 		case T_IMPORT:
 			p.module.Imports = p.parseImport()
 		case T_CONST:
+			fallthrough
 		case T_VAR:
-			p.module.Body = append(p.module.Body, p.parseVarDeclaration())
+			stmt := p.parseVarDeclaration()
+			if stmt == nil {
+				break loop
+			}
+			p.module.Body = append(p.module.Body, stmt)
 		case T_FOR:
-			p.module.Body = append(p.module.Body, p.parseFor())
+			stmt := p.parseFor()
+			if stmt == nil {
+				break loop
+			}
+			p.module.Body = append(p.module.Body, stmt)
 		case T_IF:
-			p.module.Body = append(p.module.Body, p.parseIf())
+			stmt := p.parseIf()
+			if stmt == nil {
+				break loop
+			}
+			p.module.Body = append(p.module.Body, stmt)
 		case T_FUNC:
-			p.module.Body = append(p.module.Body, p.parseFunction())
+			stmt := p.parseFunction()
+			if stmt == nil {
+				break loop
+			}
+			p.module.Body = append(p.module.Body, stmt)
 		case T_COMMENT:
 			p.nextToken()
 			// ignore comments
 		case T_EOF:
 			break loop
 		default:
-			p.parseVarDeclaration()
 			p.errors = append(p.errors, fmt.Sprintf("unrecognized token '%s'", TOKEN_NAMES[ttype]))
 			return nil
 		}
@@ -271,18 +297,80 @@ func (p *Parser) parseParameterDecl() interface{} {
 }
 
 func (p *Parser) parseVarDeclaration() interface{} {
-	return nil
+	is_const := p.peekType() == T_CONST
+	p.nextToken()
+
+	if p.expected(T_LPAREN) {
+		result := &VariableGroup{IsConst: is_const}
+		for p.peekType() != T_RPAREN {
+			stmt := p.parseSingleVariable()
+			if stmt == nil {
+				break
+			}
+			result.Variables = append(result.Variables, stmt)
+		}
+		if !p.required(T_RPAREN) {
+			return nil
+		}
+		return result
+	} else {
+		result := p.parseSingleVariable()
+		if result == nil {
+			return nil
+		}
+		result.IsConst = is_const
+		return result
+	}
+}
+
+func (p *Parser) parseSingleVariable() *VariableDecl {
+	result := &VariableDecl{}
+	// variable names
+	for {
+		literal := p.peek().Value
+		if !p.required(T_NAME) {
+			return nil
+		}
+		result.Names = append(result.Names, literal)
+		if !p.expected(T_COMMA) {
+			break
+		}
+	}
+	// variable type
+	if p.peekType() != T_ASSIGN {
+		result.Type = p.peek().Value
+		if !p.required(T_NAME) {
+			return nil
+		}
+	}
+	// initialization
+	if p.expected(T_ASSIGN) {
+		for {
+			value := p.parseExpression()
+			if value == nil {
+				return nil
+			}
+			result.Values = append(result.Values, value)
+			if !p.expected(T_COMMA) {
+				break
+			}
+		}
+	}
+	return result
 }
 
 func (p *Parser) parseFunction() *Function {
+	p.errors = append(p.errors, "function parsing not implemented")
 	return nil
 }
 
 func (p *Parser) parseStruct() *Struct {
+	p.errors = append(p.errors, "struct parsing not implemented")
 	return nil
 }
 
 func (p *Parser) parseIf() *IfStmt {
+	p.errors = append(p.errors, "conditional parsing not implemented")
 	return nil
 }
 
@@ -326,10 +414,13 @@ func (p *Parser) parseOperand() interface{} {
 	token := p.peek()
 	switch token.Type {
 	case T_NAME:
+		p.nextToken()
 		return &NameLit{Literal{Value: token.Value}}
 	case T_STRING:
+		p.nextToken()
 		return &StringLit{Literal{Value: token.Value}}
 	case T_INTEGER:
+		p.nextToken()
 		return &StringLit{Literal{Value: token.Value}}
 	default:
 		return nil
@@ -345,5 +436,6 @@ func (p *Parser) parseBlock() []interface{} {
 }
 
 func (p *Parser) parseFor() interface{} {
+	p.errors = append(p.errors, "for loop parsing not implemented")
 	return nil
 }

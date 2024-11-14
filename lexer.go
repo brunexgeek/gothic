@@ -182,7 +182,7 @@ func (l *Lexer) NextToken() (Token, error) {
 	case 0:
 		tok = Token{Type: T_EOF, Value: ""}
 	default:
-		if isLetter(l.current) {
+		if isIdentifierSymbol(l.current, true) {
 			literal := l.readIdentifier()
 			return Token{Type: lookupIdent(literal), Value: literal}, nil
 		} else if isDigit(l.current) {
@@ -229,7 +229,7 @@ func (l *Lexer) readLineComment() string {
 
 func (l *Lexer) readIdentifier() string {
 	var builder strings.Builder
-	for isLetter(l.current) {
+	for isIdentifierSymbol(l.current, false) {
 		builder.WriteRune(l.current)
 		l.readRune()
 	}
@@ -245,8 +245,8 @@ func (l *Lexer) readNumber() string {
 	return builder.String()
 }
 
-func isLetter(ch rune) bool {
-	return 'a' <= ch && ch <= 'z' || 'A' <= ch && ch <= 'Z' || ch == '_'
+func isIdentifierSymbol(ch rune, start bool) bool {
+	return ch >= 'a' && ch <= 'z' || ch >= 'A' && ch <= 'Z' || (!start && (ch == '_' || isDigit(ch)))
 }
 
 func isDigit(ch rune) bool {
@@ -256,6 +256,7 @@ func isDigit(ch rune) bool {
 func lookupIdent(ident string) TokenType {
 	keywords := map[string]TokenType{
 		"var":     T_VAR,
+		"const":   T_CONST,
 		"func":    T_FUNC,
 		"struct":  T_STRUCT,
 		"type":    T_TYPE,
