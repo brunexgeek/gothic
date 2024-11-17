@@ -46,6 +46,7 @@ const (
 	T_IMPORT
 	T_CONST
 	T_DEFINE
+	T_INTERFACE
 )
 
 var TOKEN_NAMES = []string{
@@ -86,6 +87,7 @@ var TOKEN_NAMES = []string{
 	"IMPORT",
 	"CONST",
 	"DEFINE",
+	"INTERFACE",
 }
 
 type Token struct {
@@ -268,16 +270,17 @@ func isDigit(ch rune) bool {
 
 func lookupIdent(ident string) TokenType {
 	keywords := map[string]TokenType{
-		"var":     T_VAR,
-		"const":   T_CONST,
-		"func":    T_FUNC,
-		"struct":  T_STRUCT,
-		"type":    T_TYPE,
-		"if":      T_IF,
-		"else":    T_ELSE,
-		"for":     T_FOR,
-		"package": T_PACKAGE,
-		"import":  T_IMPORT,
+		"var":       T_VAR,
+		"const":     T_CONST,
+		"func":      T_FUNC,
+		"struct":    T_STRUCT,
+		"type":      T_TYPE,
+		"if":        T_IF,
+		"else":      T_ELSE,
+		"for":       T_FOR,
+		"package":   T_PACKAGE,
+		"import":    T_IMPORT,
+		"interface": T_INTERFACE,
 	}
 	if tok, ok := keywords[ident]; ok {
 		return tok

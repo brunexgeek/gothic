@@ -33,7 +33,7 @@ type VariableDecl struct {
 
 type Function struct {
 	Name       string
-	Parameters []interface{}
+	Parameters []*ParameterDecl
 	Body       []interface{}
 	Return     interface{}
 }
@@ -66,8 +66,10 @@ const (
 
 const LOOKAHEAD_SIZE = 5
 
-type ReturnDecl struct {
+type TypeDecl struct {
 	IsPointer bool
+	Type      interface{}
+	Length    interface{}
 }
 
 type QualifiedName struct {
@@ -321,7 +323,7 @@ func (p *Parser) parsePackage() string {
 	return ""
 }
 
-func (p *Parser) parseParameterDecl() interface{} {
+func (p *Parser) parseParameterDecl() *ParameterDecl {
 	return &ParameterDecl{}
 }
 
@@ -400,21 +402,14 @@ func (p *Parser) parseFunction() *Function {
 		return nil
 	}
 	// function parameters
-	if ok, _ := p.required(T_LPAREN); !ok {
-		return nil
-	}
-	for p.peekType() != T_RPAREN {
-		function.Parameters = append(function.Parameters, p.parseParameterDecl())
-		if !p.expected(T_COMMA) {
-			break
-		}
-	}
-	if ok, _ := p.required(T_RPAREN); !ok {
-		return nil
-	}
+	function.Parameters = p.parseParameters()
 	// optional return type
 	if p.peekType() != T_LBRACE {
-		function.Return = p.parseType()
+		if p.peekType() == T_LPAREN {
+			function.Return = p.parseParameters()
+		} else {
+			function.Return = p.parseType()
+		}
 	}
 	// function body
 	function.Body = p.parseBlock()
@@ -422,13 +417,49 @@ func (p *Parser) parseFunction() *Function {
 	return function
 }
 
-func (p *Parser) parseType() *Struct {
-	result := &ReturnDecl{}
-	if p.peekType() == T_ASTERISK {
-		p.nextToken()
-		return p.parseType()
+func (p *Parser) parseParameters() []*ParameterDecl {
+	result := make([]*ParameterDecl, 0)
+	if ok, _ := p.required(T_LPAREN); !ok {
+		return nil
 	}
-	return p.parseStruct()
+	for p.peekType() != T_RPAREN {
+		result = append(result, p.parseParameterDecl())
+		if !p.expected(T_COMMA) {
+			break
+		}
+	}
+	if ok, _ := p.required(T_RPAREN); !ok {
+		return nil
+	}
+	return result
+}
+
+func (p *Parser) parseType() *TypeDecl {
+	result := &TypeDecl{}
+	switch p.peekType() {
+	case T_LBRACKET:
+		if !p.expected(T_RBRACKET) {
+			result.Length = p.parseExpression()
+		}
+		if ok, _ := p.required(T_RBRACKET); !ok {
+			return nil
+		}
+		result.Type = p.parseType()
+	case T_NAME:
+		result.Type = p.parseQualifiedName()
+	case T_INTERFACE:
+		p.nextToken()
+		if !p.expected(T_LBRACE, T_RBRACE) {
+			p.errors = append(p.errors, fmt.Sprintf("expected '{}' but found '%s'", TOKEN_NAMES[p.peekType()]))
+			return nil
+		}
+	case T_ASTERISK:
+		p.nextToken()
+		result.IsPointer = true
+		result.Type = p.parseType()
+	}
+
+	return result
 }
 
 func (p *Parser) parseStruct() *Struct {
